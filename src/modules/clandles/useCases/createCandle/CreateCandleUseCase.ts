@@ -17,13 +17,13 @@ export class CreateCandleUseCase {
         volume,
         isClosed,
     }: ICreateCandleDTO): Promise<Candle> {
-        const swapsRepository = new SwapsRepository();
-        const { id } = await swapsRepository.findByName(swapId);
+        // const swapsRepository = new SwapsRepository();
+        // const { id } = await swapsRepository.findByName(swapId);
 
-        const candleRepository = new CandleRepository(swapId);
+        const candleRepository = new CandleRepository();
         if (isClosed === true) {
             const candle = candleRepository.create({
-                swapId: id,
+                swapId,
                 interval,
                 timestamp: new Date(timestamp),
                 open,

@@ -1,80 +1,11 @@
-import { getRepository } from "typeorm";
-
+import { createConnection } from "@shared/infra/postgres";
 import { redisClient } from "@shared/infra/redis";
 
 import { ICreateCandleDTO } from "../dtos/ICreateCandleDTO";
-import {
-    ADABRL,
-    ATOMBRL,
-    AVAXBRL,
-    AXSBRL,
-    BNBBRL,
-    BTCBRL,
-    BUSDBRL,
-    C98BRL,
-    Candle,
-    CHZBRL,
-    DOGEBRL,
-    DOTBRL,
-    ENJBRL,
-    ETHBRL,
-    FISBRL,
-    FTMBRL,
-    GALABRL,
-    GMTBRL,
-    LINKBRL,
-    LTCBRL,
-    LUNABRL,
-    MANABRL,
-    MATICBRL,
-    SANDBRL,
-    SANTOSBRL,
-    SHIBBRL,
-    SOLBRL,
-    USDTBRL,
-    WINBRL,
-    XRPBRL,
-} from "../entities/Candle";
+import { Candle } from "../entities/Candle";
 import { ICandleRepository } from "./interfaces/ICandleRepository";
 
 export class CandleRepository implements ICandleRepository {
-    private repository;
-
-    constructor(repository: string) {
-        if (repository === "BTCBRL") this.repository = getRepository(BTCBRL);
-        if (repository === "ETHBRL") this.repository = getRepository(ETHBRL);
-        if (repository === "BNBBRL") this.repository = getRepository(BNBBRL);
-
-        if (repository === "SOLBRL") this.repository = getRepository(SOLBRL);
-        if (repository === "LTCBRL") this.repository = getRepository(LTCBRL);
-        if (repository === "LUNABRL") this.repository = getRepository(LUNABRL);
-        if (repository === "AVAXBRL") this.repository = getRepository(AVAXBRL);
-        if (repository === "AXSBRL") this.repository = getRepository(AXSBRL);
-        if (repository === "ATOMBRL") this.repository = getRepository(ATOMBRL);
-        if (repository === "DOTBRL") this.repository = getRepository(DOTBRL);
-        if (repository === "LINKBRL") this.repository = getRepository(LINKBRL);
-        if (repository === "SANTOSBRL")
-            this.repository = getRepository(SANTOSBRL);
-        if (repository === "SANDBRL") this.repository = getRepository(SANDBRL);
-        if (repository === "MANABRL") this.repository = getRepository(MANABRL);
-        if (repository === "GMTBRL") this.repository = getRepository(GMTBRL);
-        if (repository === "ENJBRL") this.repository = getRepository(ENJBRL);
-        if (repository === "C98BRL") this.repository = getRepository(C98BRL);
-        if (repository === "MATICBRL")
-            this.repository = getRepository(MATICBRL);
-        if (repository === "FTMBRL") this.repository = getRepository(FTMBRL);
-        if (repository === "ADABRL") this.repository = getRepository(ADABRL);
-        if (repository === "USDTBRL") this.repository = getRepository(USDTBRL);
-        if (repository === "BUSDBRL") this.repository = getRepository(BUSDBRL);
-        if (repository === "XRPBRL") this.repository = getRepository(XRPBRL);
-        if (repository === "FISBRL") this.repository = getRepository(FISBRL);
-        if (repository === "CHZBRL") this.repository = getRepository(CHZBRL);
-        if (repository === "GALABRL") this.repository = getRepository(GALABRL);
-        if (repository === "DOGEBRL") this.repository = getRepository(DOGEBRL);
-        if (repository === "WINBRL") this.repository = getRepository(WINBRL);
-        if (repository === "SHIBBRL") this.repository = getRepository(SHIBBRL);
-    }
-
     async create({
         swapId,
         interval,
@@ -86,7 +17,9 @@ export class CandleRepository implements ICandleRepository {
         volume,
         isClosed,
     }: ICreateCandleDTO) {
-        const candle = this.repository.create({
+        const candle = new Candle();
+
+        Object.assign(candle, {
             swapId,
             interval,
             timestamp,
@@ -98,7 +31,70 @@ export class CandleRepository implements ICandleRepository {
             isClosed,
         });
 
-        return this.repository.save(candle);
+        const client = await createConnection();
+
+        const tableName = `candles_${swapId}_${interval}`;
+
+        const pkName = `PK_candles_${swapId}_${interval}`;
+
+        const fkName = `FK_candles_${swapId}_${interval}`;
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS ${tableName} (
+                "id" uuid NOT NULL,
+                "swapId" uuid NOT NULL,
+                "timestamp" timestamp NOT NULL,
+                "open" decimal NOT NULL,
+                "close" decimal NOT NULL,
+                "high" decimal NOT NULL,
+                "low" decimal NOT NULL,
+                "volume" decimal NOT NULL,
+                "isClosed" boolean NOT NULL,
+                "createdAt" timestamp NOT NULL DEFAULT now(),
+                "updatedAt" timestamp NOT NULL DEFAULT now(),
+                CONSTRAINT ${pkName} PRIMARY KEY ("id"),
+                CONSTRAINT ${fkName}
+                FOREIGN KEY("swapId")
+                REFERENCES swaps(id)
+            );
+        `);
+
+        const { rows } = await client.query(
+            `SELECT id FROM swaps WHERE name = '${swapId.toUpperCase()}'`
+        );
+
+        const thisSwapId = rows[0].id;
+
+        const sql = `INSERT INTO ${tableName} (
+            "id", 
+            "swapId", 
+            "timestamp", 
+            "open", 
+            "close", 
+            "high", 
+            "low", 
+            "volume",
+            "isClosed", 
+            "createdAt", 
+            "updatedAt"
+            ) VALUES ($1,$2,$3, $4, $5, $6, $7, $8, $9, $10, $11);`;
+        const values = [
+            candle.id,
+            thisSwapId,
+            candle.timestamp,
+            candle.open,
+            candle.close,
+            candle.high,
+            candle.low,
+            candle.volume,
+            candle.isClosed,
+            candle.createdAt,
+            candle.updatedAt,
+        ];
+
+        await client.query(sql, values);
+
+        return candle;
     }
 
     async cache({

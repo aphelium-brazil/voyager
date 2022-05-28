@@ -55,16 +55,8 @@ async function createConnection(kline: string): Promise<WebSocket[]> {
 }
 
 export async function startupRoutine() {
-    // await createConnection("BTCBRL");
-    // await createConnection("ETHBRL");
-
     const swapsRepository = new SwapsRepository();
     const listSwapsUseCase = new ListSwapsUseCase(swapsRepository);
-    const swaps = listSwapsUseCase.execute();
-    console.log(swaps);
-    swaps.then((swaps) => {
-        swaps.forEach((swap) => {
-            createConnection(swap.name);
-        });
-    });
+    const swaps = await listSwapsUseCase.execute();
+    swaps.map((swap) => createConnection(swap.name));
 }
